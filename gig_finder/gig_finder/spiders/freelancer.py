@@ -7,4 +7,18 @@ class FreelancerSpider(scrapy.Spider):
     start_urls = ["https://www.br.freelancer.com/jobs/python/"]
 
     def parse(self, response):
-        self.log("Hi, I am a freelancer spider!")
+        """Para cada página listando jobs, extrai os links de cada job"""
+        # XPath correspondente à todas as divs que contém a listagem dos jobs
+        for job in response.xpath('//div[@class="JobSearchCard-item "]'):
+            # Mande visitar cada um dos jobs listados
+            yield response.follow(
+                job.xpath('.//a/@href').get(), # Link de cada job
+                callback=self.parse_job
+            )
+
+    def parse_job(self, response):
+        """Uma vez na página de detalhes de um job, extrai as informações relevantes"""
+        yield {
+            'link': response.url,
+            'title': response.xpath('//h1/text()').get()
+        }
