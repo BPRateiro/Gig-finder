@@ -16,6 +16,12 @@ class FreelancerSpider(scrapy.Spider):
                 callback=self.parse_job
             )
 
+        # Acessa a próxima página de resultados
+        yield response.follow(
+            response.xpath('//div[@class="Pagination"]/a[@rel="next"]/@href').get(), 
+            callback=self.parse
+        )
+
     def parse_job(self, response):
         """Uma vez na página de detalhes de um job, extrai as informações relevantes"""
         yield {
