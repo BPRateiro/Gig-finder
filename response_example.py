@@ -2,7 +2,7 @@ import gzip
 from bs4 import BeautifulSoup
 
 # Exemplo de documento crawleado pelo scrapy
-cached_file_path = 'gig_finder/.scrapy/httpcache/freelancer/0b/0b225578623802c0f03ecc1fdf4a342a7d9b2ddc/response_body'
+cached_file_path = r'gig_finder\.scrapy\httpcache\freelancer\1b\1bf48bd5e368b3707a9139469ada52755b368b02\response_body'
 
 with gzip.open(cached_file_path, 'rb') as compressed_file:
     soup = BeautifulSoup(compressed_file.read(), 'html.parser')
@@ -10,5 +10,5 @@ with gzip.open(cached_file_path, 'rb') as compressed_file:
 # Caso queira consultar o documento todo
 # print(soup.prettify())
 
-# Deve imprimir o título 'Docker Compose - Custom Image Creation'
+# Deve imprimir o título 'Web Application Development Specialist
 print(soup.find('h1').text)
