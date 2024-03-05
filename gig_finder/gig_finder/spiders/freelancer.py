@@ -44,8 +44,16 @@ class FreelancerSpider(scrapy.Spider):
     def parse_template_1(self, response, common_data):
         """Extrai dados do primeiro template"""
         # Flask Developer for Python UI Creation
+        # Muitas informações dentro de um só div: status, posted_when e deadline
+        bunched_data = response.xpath('//div[@class="IconTextPair"]//div[@class="NativeElement ng-star-inserted"]//text()').getall()
         common_data.update({
+            'status': bunched_data[0],
+            'price': response.xpath('//fl-heading//h2[@class="ng-star-inserted"]/text()').get(),
+            'paid_when': response.xpath('//div[1]/div[1]/div[2]/fl-text/div/text()').get(),
+            'posted_when': bunched_data[1] + ' ' + bunched_data[2],
+            'deadline': bunched_data[-1],
             'description': response.xpath('//fl-text[@class="Project-description"]/div/text()').get(),
+            'tags': response.xpath('//fl-tag[@fltrackinglabel="ProjectViewLoggedOut-SkillTag"]//text()').getall(),
         })
         yield common_data
 
@@ -59,5 +67,6 @@ class FreelancerSpider(scrapy.Spider):
             'posted_when': response.xpath('//span[@class="PageProjectViewLogout-projectInfo-label-deliveryInfo-relativeTime"]/text()').get(),
             'deadline': response.xpath('//span[@class="PageProjectViewLogout-projectInfo-label-deliveryInfo-remainingDays"]/text()').get(),
             'description': response.xpath('//div[@class="PageProjectViewLogout-detail"]/p[not(@class)]/text()').getall(),
+            'tags': response.xpath('//a[@class="PageProjectViewLogout-detail-tags-link--highlight"]/text()').getall(),
         })
         yield common_data
