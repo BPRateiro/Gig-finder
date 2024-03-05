@@ -43,10 +43,11 @@ class FreelancerSpider(scrapy.Spider):
     
     def parse_template_1(self, response, common_data):
         """Extrai dados do primeiro template"""
-        # Flask Developer for Python UI Creation
+        # Exemplo: 'https://www.br.freelancer.com/projects/python/flask-developer-for-python-creation'
         # Muitas informações dentro de um só div: status, posted_when e deadline
         bunched_data = response.xpath('//div[@class="IconTextPair"]//div[@class="NativeElement ng-star-inserted"]//text()').getall()
         common_data.update({
+            'id': response.xpath('//app-project-view-logged-out-main/div[1]/fl-text[2]/div/text()').get(),
             'status': bunched_data[0],
             'price': response.xpath('//fl-heading//h2[@class="ng-star-inserted"]/text()').get(),
             'paid_when': response.xpath('//div[1]/div[1]/div[2]/fl-text/div/text()').get(),
@@ -59,8 +60,9 @@ class FreelancerSpider(scrapy.Spider):
 
     def parse_template_2(self, response, common_data):
         """Extrai dados do segundo template"""
-        # Golf Club Analysis Application Needed
-        common_data.update({ 
+        # Exemplo: 'https://www.br.freelancer.com/projects/python/golf-club-analysis-application-needed'
+        common_data.update({
+            'id': response.xpath('//p[@class="PageProjectViewLogout-detail-projectId"]/text()').get(),
             'status': response.xpath('//span[@class="promotion-tag promotion-tag-default"]/text()').get(),
             'price': response.xpath('//p[@class="PageProjectViewLogout-projectInfo-byLine"]/text()').get(),
             'paid_when': response.xpath('//p[@class="PageProjectViewLogout-projectInfo-byLine-paymentInfo"]/text()').get(),
