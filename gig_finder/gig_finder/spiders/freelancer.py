@@ -4,7 +4,8 @@ import scrapy
 class FreelancerSpider(scrapy.Spider):
     name = "freelancer"
     allowed_domains = ["www.br.freelancer.com"]
-    start_urls = ["https://www.br.freelancer.com/jobs/python/"]
+    start_urls = ["https://www.br.freelancer.com/jobs/python/?status=all",
+                  "https://www.br.freelancer.com/jobs/python/20/?status=all"]
 
     def parse(self, response):
         """Para cada página listando jobs, extrai os links de cada job"""
@@ -17,10 +18,12 @@ class FreelancerSpider(scrapy.Spider):
             )
 
         # Acessa a próxima página de resultados
-        # yield response.follow(
-        #     response.xpath('//div[@class="Pagination"]/a[@rel="next"]/@href').get(), 
-        #     callback=self.parse
-        # )
+        next_page = response.xpath('//div[@class="Pagination"]/a[@rel="next"]/@href').get()
+        if next_page is not None:
+            print(f"Next page: {next_page}")
+            if not next_page.endswith('?status=all'):
+                next_page += '/?status=all'  # Append the missing query string
+            yield response.follow(next_page, callback=self.parse)
 
     def parse_job(self, response):
         """Uma vez na página de detalhes de um job, extrai as informações relevantes"""
