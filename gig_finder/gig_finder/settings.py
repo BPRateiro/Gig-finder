@@ -7,11 +7,14 @@
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 BOT_NAME = "gig_finder"
 
 SPIDER_MODULES = ["gig_finder.spiders"]
 NEWSPIDER_MODULE = "gig_finder.spiders"
-
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = "gig_finder (+http://www.yourdomain.com)"
@@ -91,3 +94,16 @@ HTTPCACHE_STORAGE = "scrapy.extensions.httpcache.FilesystemCacheStorage"
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
+
+# MongoDB variables
+MONGO_USER = os.getenv('MONGO_USER')
+MONGO_PASSWORD = os.getenv('MONGO_PASSWORD')
+MONGO_CLUSTER_ADDRESS = os.getenv('MONGO_CLUSTER_ADDRESS')
+MONGO_APP = os.getenv('MONGO_APP')
+
+MONGO_URI = f'mongodb+srv://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_CLUSTER_ADDRESS}/?retryWrites=true&w=majority&appName={MONGO_APP}'
+MONGO_DATABASE = MONGO_APP
+
+print('-'*10)
+print(MONGO_URI)
+print('-'*10)
