@@ -10,7 +10,6 @@ import pymongo
 import re
 
 class GigFinderPipeline:
-    collection_name = "freelancer"
 
     def __init__(self, mongo_uri, mongo_db):
         self.mongo_uri = mongo_uri
@@ -26,6 +25,7 @@ class GigFinderPipeline:
     def open_spider(self, spider):
         self.client = pymongo.MongoClient(self.mongo_uri)
         self.db = self.client[self.mongo_db]
+        self.collection_name = spider.name
 
     def close_spider(self, spider):
         self.client.close()
@@ -37,8 +37,12 @@ class GigFinderPipeline:
                 item[field] = self.clean_string(item[field])
             elif isinstance(item[field], list): # Caso seja uma lista de strings
                 item[field] = [self.clean_string(element) for element in item[field] if isinstance(element, str)]
-        # Writes to MongoDB
-        self.db[self.collection_name].insert_one(ItemAdapter(item).asdict())
+        # Use `update_one` with `upsert=True` to insert or update the document based on `_id`
+        self.db[self.collection_name].update_one(
+            {"_id": item["_id"]},    # Match by `_id`
+            {"$set": item},          # Update with new item data
+            upsert=True              # Insert if no document with `_id` exists
+        )
         return item
     
     def clean_string(self, text):
