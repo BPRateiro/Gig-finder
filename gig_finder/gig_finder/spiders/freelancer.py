@@ -9,7 +9,7 @@ class FreelancerSpider(scrapy.Spider):
         """Extract links associated with the "Websites, IT" section"""
         links = response.xpath('//section[contains(header//h3/text(), "Websites, IT")]/ul/li/a/@href').getall()
 
-        for link in links[:1]:
+        for link in links:
             full_link_start = response.urljoin(link.rstrip('/')) + self.suffix # Starting position
             full_link_finish = response.urljoin(link) + "20" + self.suffix # Skip the 1X pages, because they only redirect to start
 
