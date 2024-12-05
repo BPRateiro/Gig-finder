@@ -13,28 +13,49 @@ class FreelancerSpider(scrapy.Spider):
         self.historical = historical if isinstance(historical, bool) else historical.lower() == 'true'
 
     def parse(self, response):
-        """Extract links associated with the "Websites, IT" section"""
-        links = response.xpath('//section[contains(header//h3/text(), "Websites, IT")]/ul/li/a/@href').getall()
+        """Extract links associated with each category"""
+        categories = response.xpath('//section[@class="PageJob-category"]')
+        category_links = {} # Dictionary to store categories and their associated links
 
-        titles = response.xpath('//section[contains(header//h3/text(), "Websites, IT")]/ul/li/a/text()').getall()
-        cleaned_titles = [
-            cleaned_title
-            for title in titles
-            if (cleaned_title := self.clean_title(title))  # Clean once and filter
-        ]
-        with open('categories.json', 'w', encoding='utf-8') as f:
-            json.dump(cleaned_titles, f, ensure_ascii=False, indent=4)
+        for category in categories:
+            # Extract category title
+            category_title = category.xpath('./header//h3/text()').get()
+            if category_title:
+                category_title = category_title.strip()
 
-        for link in links[:1]:
-            if self.historical: # Get all data
-                full_link_start = response.urljoin(link.rstrip('/')) + self.suffix
-                full_link_finish = response.urljoin(link) + "20" + self.suffix # Skip the 1X pages, because they only redirect to start
-            else:
-                full_link_start = response.urljoin(link.rstrip('/'))
-                full_link_finish = response.urljoin(link) + "20" # Skip the 1X pages, because they only redirect to start
+            # Extract all links within the current category (excluding contests)
+            links = category.xpath('.//a[contains(@class, "PageJob-category-link") and not(contains(@href, "contest"))]/@href').getall()
 
-            yield response.follow(full_link_start, callback=self.parse_job_tag)
-            yield response.follow(full_link_finish, callback=self.parse_job_tag)
+            # Store the links associated with the category
+            if category_title and links:
+                category_links[self.clean_title(category_title)] = [response.urljoin(link) for link in links]
+
+            # Save category links to a JSON file
+            with open('categories.json', 'w', encoding='utf-8') as f:
+                json.dump(category_links, f, ensure_ascii=False, indent=4)
+
+        # for category in categories[1:2]:
+        #     # Extract category title
+        #     category_title = category.xpath('./header//h3/text()').get()
+        #     if category_title:
+        #         category_title = self.clean_title(category_title)
+
+        #     # Extract all job links within the current category excluding contests
+        #     links = category.xpath('.//a[contains(@class, "PageJob-category-link") and not(contains(@href, "contest"))]/@href').getall()
+
+        #     # Log the category being processed
+        #     self.logger.info(f"Processing category: {category_title} with {len(links)} links")
+
+        #     for link in links[:1]:
+        #         if self.historical: # Get all data
+        #             full_link_start = response.urljoin(link.rstrip('/')) + self.suffix
+        #             full_link_finish = response.urljoin(link) + "20" + self.suffix # Skip the 1X pages, because they only redirect to start
+        #         else: # Fetch only open jobs
+        #             full_link_start = response.urljoin(link.rstrip('/'))
+        #             full_link_finish = response.urljoin(link) + "20" # Skip the 1X pages, because they only redirect to start
+
+        #         yield response.follow(full_link_start, callback=self.parse_job_tag)
+        #         yield response.follow(full_link_finish, callback=self.parse_job_tag)
     
     def clean_title(self, title):
         """Clean a title by removing extra whitespace and numbers in parentheses."""
