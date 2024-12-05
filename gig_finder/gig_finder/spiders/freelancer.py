@@ -7,6 +7,11 @@ class FreelancerSpider(scrapy.Spider):
     start_urls = ['https://www.freelancer.com/job/']
     suffix = "/?status=all" # Show all jobs including closed
 
+    def __init__(self, historical=False, *args, **kwargs):
+        """Initialize the spider with the historical flag."""
+        super().__init__(*args, **kwargs)
+        self.historical = historical if isinstance(historical, bool) else historical.lower() == 'true'
+
     def parse(self, response):
         """Extract links associated with the "Websites, IT" section"""
         links = response.xpath('//section[contains(header//h3/text(), "Websites, IT")]/ul/li/a/@href').getall()
@@ -20,12 +25,16 @@ class FreelancerSpider(scrapy.Spider):
         with open('categories.json', 'w', encoding='utf-8') as f:
             json.dump(cleaned_titles, f, ensure_ascii=False, indent=4)
 
-        for link in links:
-            full_link_start = response.urljoin(link.rstrip('/')) + self.suffix # Starting position
-            full_link_finish = response.urljoin(link) + "20" + self.suffix # Skip the 1X pages, because they only redirect to start
+        for link in links[:1]:
+            if self.historical: # Get all data
+                full_link_start = response.urljoin(link.rstrip('/')) + self.suffix
+                full_link_finish = response.urljoin(link) + "20" + self.suffix # Skip the 1X pages, because they only redirect to start
+            else:
+                full_link_start = response.urljoin(link.rstrip('/'))
+                full_link_finish = response.urljoin(link) + "20" # Skip the 1X pages, because they only redirect to start
 
-            yield response.follow(full_link_start, callback=self.parse_job_category)
-            yield response.follow(full_link_finish, callback=self.parse_job_category)
+            yield response.follow(full_link_start, callback=self.parse_job_tag)
+            yield response.follow(full_link_finish, callback=self.parse_job_tag)
     
     def clean_title(self, title):
         """Clean a title by removing extra whitespace and numbers in parentheses."""
@@ -33,9 +42,9 @@ class FreelancerSpider(scrapy.Spider):
         title = re.sub(r'\s*\(\d+\)$', '', title)  # Remove numbers in parentheses
         return title if title else None  # Return None for empty titles
 
-    def parse_job_category(self, response):
-        """Extract all div elements with a class that contains "JobSearchCard-item"""
-        job_cards = response.xpath('//div[contains(@class, "JobSearchCard-item")]')
+    def parse_job_tag(self, response):
+        """Extract all job cards"""
+        job_cards = response.xpath('//div[contains(@class, "JobSearchCard-item-inner")]')
         
         for job_card in job_cards:
             yield {
@@ -49,6 +58,16 @@ class FreelancerSpider(scrapy.Spider):
                 "offers": job_card.xpath('.//div[contains(@class, "JobSearchCard-secondary-entry")]/text()').get(),            
             }
 
+        # Check for the "next" page link
         next_page = response.xpath('//a[@rel="next" and contains(@class, "Pagination-item")]/@href').get()
+        
         if next_page:
-            yield response.follow(next_page + self.suffix, callback=self.parse_job_category)
+            # Use historical logic for "next" link
+            next_page = next_page.rstrip('/') + self.suffix if self.historical else next_page
+            yield response.follow(next_page, callback=self.parse_job_tag)
+        else:
+            # If "next" is not available, fetch the "last" page link
+            last_page = response.xpath('//a[contains(@class, "Pagination-item") and text()="Last"]/@href').get()
+            if last_page:
+                last_page = last_page.rstrip('/') + self.suffix if self.historical else last_page
+                yield response.follow(last_page, callback=self.parse_job_tag)
