@@ -13,49 +13,60 @@ class FreelancerSpider(scrapy.Spider):
         self.historical = historical if isinstance(historical, bool) else historical.lower() == 'true'
 
     def parse(self, response):
-        """Extract links associated with each category"""
+        """Parse the main page and process job categories."""
+        # Extract category data
+        category_data = self.extract_categories(response)
+
+        # Process each category one by one
+        for category in category_data:  # Iterate over all categories
+            category_title = category['category']
+            tag_link = category['tag_link']
+
+            # Log the category being processed
+            self.logger.info(f"Processing category: {category_title} at {tag_link}")
+
+            # Format links using format_url
+            full_link_start = self.format_url(tag_link)
+            full_link_finish = self.format_url(tag_link + "20")  # Skip "1X" pages
+
+            # Follow both starting and ending pages
+            yield response.follow(full_link_start, callback=self.parse_job_tag)
+            yield response.follow(full_link_finish, callback=self.parse_job_tag)
+
+    def extract_categories(self, response):
+        """Extract links associated with each category and return as a list of dictionaries."""
         categories = response.xpath('//section[@class="PageJob-category"]')
-        category_links = {} # Dictionary to store categories and their associated links
+        category_data = []  # List to store category-tag dictionaries
 
         for category in categories:
             # Extract category title
             category_title = category.xpath('./header//h3/text()').get()
             if category_title:
-                category_title = category_title.strip()
+                category_title = self.clean_title(category_title)
 
-            # Extract all links within the current category (excluding contests)
-            links = category.xpath('.//a[contains(@class, "PageJob-category-link") and not(contains(@href, "contest"))]/@href').getall()
+            # Extract all links and titles within the current category (excluding contests)
+            links = category.xpath('.//a[contains(@class, "PageJob-category-link") and not(contains(@href, "contest"))]')
+            for link in links:
+                tag_title = link.xpath('./@title').get()  # Extract the tag's title
+                tag_link = link.xpath('./@href').get()  # Extract the tag's link
 
-            # Store the links associated with the category
-            if category_title and links:
-                category_links[self.clean_title(category_title)] = [response.urljoin(link) for link in links]
+                # Append as a dictionary
+                if category_title and tag_title and tag_link:
+                    category_data.append({
+                        "category": category_title,
+                        "tag": tag_title.strip(),
+                        "tag_link": response.urljoin(tag_link.strip())
+                    })
 
-            # Save category links to a JSON file
-            with open('categories.json', 'w', encoding='utf-8') as f:
-                json.dump(category_links, f, ensure_ascii=False, indent=4)
+        # Save the extracted category data to a JSON file
+        with open('categories.json', 'w', encoding='utf-8') as f:
+            json.dump(category_data, f, ensure_ascii=False, indent=4)
 
-        # for category in categories[1:2]:
-        #     # Extract category title
-        #     category_title = category.xpath('./header//h3/text()').get()
-        #     if category_title:
-        #         category_title = self.clean_title(category_title)
-
-        #     # Extract all job links within the current category excluding contests
-        #     links = category.xpath('.//a[contains(@class, "PageJob-category-link") and not(contains(@href, "contest"))]/@href').getall()
-
-        #     # Log the category being processed
-        #     self.logger.info(f"Processing category: {category_title} with {len(links)} links")
-
-        #     for link in links[:1]:
-        #         if self.historical: # Get all data
-        #             full_link_start = response.urljoin(link.rstrip('/')) + self.suffix
-        #             full_link_finish = response.urljoin(link) + "20" + self.suffix # Skip the 1X pages, because they only redirect to start
-        #         else: # Fetch only open jobs
-        #             full_link_start = response.urljoin(link.rstrip('/'))
-        #             full_link_finish = response.urljoin(link) + "20" # Skip the 1X pages, because they only redirect to start
-
-        #         yield response.follow(full_link_start, callback=self.parse_job_tag)
-        #         yield response.follow(full_link_finish, callback=self.parse_job_tag)
+        return category_data
+    
+    def format_url(self, url):
+        """Format URL based on historical flag."""
+        return url.rstrip('/') + self.suffix if self.historical else url
     
     def clean_title(self, title):
         """Clean a title by removing extra whitespace and numbers in parentheses."""
@@ -79,16 +90,10 @@ class FreelancerSpider(scrapy.Spider):
                 "offers": job_card.xpath('.//div[contains(@class, "JobSearchCard-secondary-entry")]/text()').get(),            
             }
 
-        # Check for the "next" page link
         next_page = response.xpath('//a[@rel="next" and contains(@class, "Pagination-item")]/@href').get()
-        
         if next_page:
-            # Use historical logic for "next" link
-            next_page = next_page.rstrip('/') + self.suffix if self.historical else next_page
-            yield response.follow(next_page, callback=self.parse_job_tag)
+            yield response.follow(self.format_url(next_page), callback=self.parse_job_tag)
         else:
-            # If "next" is not available, fetch the "last" page link
             last_page = response.xpath('//a[contains(@class, "Pagination-item") and text()="Last"]/@href').get()
             if last_page:
-                last_page = last_page.rstrip('/') + self.suffix if self.historical else last_page
-                yield response.follow(last_page, callback=self.parse_job_tag)
+                yield response.follow(self.format_url(last_page), callback=self.parse_job_tag)
