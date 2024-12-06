@@ -92,21 +92,7 @@ REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 
-# MongoDB variables
-MONGO_USER = os.getenv('MONGO_USER')
-MONGO_PASSWORD = os.getenv('MONGO_PASSWORD')
-MONGO_CLUSTER_ADDRESS = os.getenv('MONGO_CLUSTER_ADDRESS')
-MONGO_APP = os.getenv('MONGO_APP')
-
-MONGO_URI = f'mongodb+srv://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_CLUSTER_ADDRESS}/?retryWrites=true&w=majority&appName={MONGO_APP}'
-MONGO_DATABASE = MONGO_APP
-
-# Playwright
-PLAYWRIGHT_BROWSER_TYPE = "chromium"
-PLAYWRIGHT_LAUNCH_OPTIONS = {
-    "headless": False,
-}
-DOWNLOAD_HANDLERS = {
-    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-}
+# AWS DynamoDB
+AWS_REGION = os.getenv('AWS_REGION')
+AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY')
+AWS_SECRET_KEY = os.getenv('AWS_SECRET_KEY')

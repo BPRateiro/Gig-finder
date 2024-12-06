@@ -1,52 +1,74 @@
-# Define your item pipelines here
-#
-# Don't forget to add your pipeline to the ITEM_PIPELINES setting
-# See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-
-
-# useful for handling different item types with a single interface
 from itemadapter import ItemAdapter
-import pymongo
+import boto3
 import re
 
 class GigFinderPipeline:
 
-    def __init__(self, mongo_uri, mongo_db):
-        self.mongo_uri = mongo_uri
-        self.mongo_db = mongo_db
+    def __init__(self, aws_region, aws_access_key, aws_secret_key):
+        self.aws_region = aws_region
+        self.aws_access_key = aws_access_key
+        self.aws_secret_key = aws_secret_key
 
     @classmethod
     def from_crawler(cls, crawler):
         return cls(
-            mongo_uri=crawler.settings.get("MONGO_URI"),
-            mongo_db=crawler.settings.get("MONGO_DATABASE", "items"),
+            aws_region=crawler.settings.get("AWS_REGION"),
+            aws_access_key=crawler.settings.get("AWS_ACCESS_KEY"),
+            aws_secret_key=crawler.settings.get("AWS_SECRET_KEY"),
         )
 
     def open_spider(self, spider):
-        self.client = pymongo.MongoClient(self.mongo_uri)
-        self.db = self.client[self.mongo_db]
-        self.collection_name = spider.name
+        """Initialize the DynamoDB client and create the table if it doesn't exist."""
+        self.dynamodb = boto3.resource(
+            'dynamodb',
+            region_name=self.aws_region,
+            aws_access_key_id=self.aws_access_key,
+            aws_secret_access_key=self.aws_secret_key
+        )
 
-    def close_spider(self, spider):
-        self.client.close()
+        # Check if the table exists
+        existing_tables = self.dynamodb.meta.client.list_tables()['TableNames']
+        if spider.name not in existing_tables:
+            # Create the table
+            self.dynamodb.create_table(
+                TableName=spider.name,
+                KeySchema=[
+                    {'AttributeName': '_id', 'KeyType': 'HASH'}  # Partition key
+                ],
+                AttributeDefinitions=[
+                    {'AttributeName': '_id', 'AttributeType': 'S'}  # String type
+                ],
+                ProvisionedThroughput={
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
+                }
+            )
+            # Wait for the table to be created
+            table = self.dynamodb.Table(spider.name)
+            table.meta.client.get_waiter('table_exists').wait(TableName=spider.name)
+
+        # Initialize the table object
+        self.table = self.dynamodb.Table(spider.name)
 
     def process_item(self, item, spider):
-        """Tira os caracteres de espaço em branco do início e do fim de cada string"""
+        """Process and save the item to DynamoDB."""
+        # Clean strings in the item
         for field in item:
-            if isinstance(item[field], str): # Caso seja uma string
+            if isinstance(item[field], str):  # Clean strings
                 item[field] = self.clean_string(item[field])
-            elif isinstance(item[field], list): # Caso seja uma lista de strings
+            elif isinstance(item[field], list):  # Clean lists of strings
                 item[field] = [self.clean_string(element) for element in item[field] if isinstance(element, str)]
-        # Use `update_one` with `upsert=True` to insert or update the document based on `_id`
-        self.db[self.collection_name].update_one(
-            {"_id": item["_id"]},    # Match by `_id`
-            {"$set": item},          # Update with new item data
-            upsert=True              # Insert if no document with `_id` exists
-        )
+
+        try:
+            spider.logger.info(f"Processing item with _id: {item['_id']}")
+            response = self.table.put_item(Item=item)
+            spider.logger.info(f"DynamoDB response: {response}")
+        except Exception as e:
+            spider.logger.error(f"Error inserting item into DynamoDB: {e}")
         return item
-    
+
     def clean_string(self, text):
-        """Tira os caracteres de espaço em branco do início e do fim de cada string"""
+        """Clean whitespace and normalize strings."""
         text = text.strip()
         text = re.sub(r'\s+', ' ', text)
         return text

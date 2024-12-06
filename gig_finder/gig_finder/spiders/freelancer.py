@@ -18,7 +18,7 @@ class FreelancerSpider(scrapy.Spider):
         category_data = self.extract_categories(response)
 
         # Process each category one by one
-        for category in category_data:  # Iterate over all categories
+        for category in category_data[:1]: # TEST ONLY
             category_title = category['category']
             tag_link = category['tag_link']
 
