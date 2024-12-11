@@ -89,7 +89,7 @@ class GigFinderPipeline:
         diff = {}
         for field in self.track_fields:
             if field in new_item and (field not in old_item or old_item[field] != new_item[field]):
-                diff[field] = new_item[field]
+                diff[field] = old_item.get(field)
         return diff
 
 
@@ -142,7 +142,6 @@ class DynamoDBManager:
             return response.get('Item')
         except Exception as e:
             raise RuntimeError(f"Failed to get item with projection from table: {e}")
-
 
     def get_items_excluding_status(self, table, excluded_status, fields=None):
         """Retrieve all items that do not have the specified excluded status, with optional field projection."""
