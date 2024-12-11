@@ -87,7 +87,8 @@ class FreelancerSpider(scrapy.Spider):
                 "tag_links": job_card.xpath('.//a[contains(@class, "JobSearchCard-primary-tagsLink")]/@href').getall(),
                 "tags": job_card.xpath('.//a[contains(@class, "JobSearchCard-primary-tagsLink")]/text()').getall(),
                 "price": job_card.xpath('.//div[contains(@class, "JobSearchCard-primary-price")]/text()').get(),
-                "offers": job_card.xpath('.//div[contains(@class, "JobSearchCard-secondary-entry")]/text()').get(),            
+                "offers": job_card.xpath('.//div[contains(@class, "JobSearchCard-secondary-entry")]/text()').get(),
+                "verified_payment": bool(job_card.xpath('.//div[contains(@class, "JobSearchCard-primary-heading-status")]'))         
             }
 
         next_page = response.xpath('//a[@rel="next" and contains(@class, "Pagination-item")]/@href').get()
