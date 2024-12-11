@@ -95,14 +95,14 @@ class GigFinderPipeline:
         existing_item = self.dynamodb_manager.get_item_with_projection(self.table, item['_id'], self.track_fields + ["history"])
         if existing_item:
             diff = self.calculate_diff(existing_item, item)
+            history = existing_item.get('history', [])
             if diff:  # Only update if there are changes
                 change_record = {
                     "modified_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "changes": diff
                 }
-                history = existing_item.get('history', [])
                 history.append(change_record)
-                item['history'] = history
+            item['history'] = history
         else:  # First insertion
             item['created_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             item['history'] = []
