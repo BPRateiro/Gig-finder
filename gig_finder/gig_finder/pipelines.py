@@ -3,11 +3,13 @@ import boto3
 import re
 
 from boto3.dynamodb.conditions import Attr
+from decimal import Decimal
 
 class GigFinderPipeline:
     def __init__(self, aws_region, aws_access_key, aws_secret_key):
         self.dynamodb_manager = DynamoDBManager(aws_region, aws_access_key, aws_secret_key)
-        self.track_fields = ["status", "price", "offers"]  # Default fields to track
+        self.track_fields = ["status", "price_min", "price_max", "offers", "is_competition", 
+                             "is_hourly", "types", "verified_payment", "tags"]  # Default fields to track
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -45,12 +47,40 @@ class GigFinderPipeline:
 
     def process_item(self, item, spider):
         """Process and save the item to DynamoDB."""
+        # Remove private projects and records without price
+        if (item.get('offers') is None and item.get('price') is None) or item.get('price') == 'N/A':
+            spider.logger.info(f"Skipping private project or item with no price: {item.get('_id')}")
+            return None
+        
         # Clean strings in the item
         for field in item:
             if isinstance(item[field], str):  # Clean strings
                 item[field] = self.clean_string(item[field])
             elif isinstance(item[field], list):  # Clean lists of strings
                 item[field] = [self.clean_string(element) for element in item[field] if isinstance(element, str)]
+
+        # Mark if the job is part of a competition
+        item['is_competition'] = bool(re.search(r'entries', str(item.get('offers', ''))))
+
+        # Extract the number of offers
+        offers_match = re.search(r'(\d+)', str(item.get('offers', '')))
+        item['offers'] = int(offers_match.group(1)) if offers_match else None
+
+        # Add the is_hourly column
+        hourly_suffix = r'\s*/\s*hr'
+        item['is_hourly'] = bool(re.search(hourly_suffix, str(item.get('price', ''))))
+
+        # Extract price_min and price_max
+        extraction_pattern = r'\$(\d+)(?:\s*-\s*\$(\d+))?'
+        extracted = re.search(extraction_pattern, item.get("price"))
+        item['price_min'] = Decimal(extracted.group(1)) if extracted else None
+        item['price_max'] = Decimal(extracted.group(2)) if extracted and extracted.group(2) else item['price_min']
+        item.pop('price', None) # Drop the original price column
+
+        # Append site prefix to the _id
+        item['_id'] = f"https://www.freelancer.com{item.get('_id', '')}"
+
+        # Update last_seen_at timestamp
         item['last_seen_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         try:
