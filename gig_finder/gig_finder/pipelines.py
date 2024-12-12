@@ -189,9 +189,8 @@ class DynamoDBManager:
     def get_items_excluding_status(self, table, excluded_status, fields=None):
         """Retrieve all items that do not have the specified excluded status, with optional field projection."""
         try:
-            scan_kwargs = {
-                "FilterExpression": Attr('status').ne(excluded_status)
-            }
+            items = []
+            scan_kwargs = {"FilterExpression": Attr('status').ne(excluded_status)}
 
             if fields:
                 # Map fields to handle reserved keywords
@@ -199,10 +198,18 @@ class DynamoDBManager:
                 projection_expression = ", ".join(expression_attribute_names.keys())
                 scan_kwargs.update({
                     "ProjectionExpression": projection_expression,
-                    "ExpressionAttributeNames": expression_attribute_names
+                    "ExpressionAttributeNames": expression_attribute_names,
                 })
 
             response = table.scan(**scan_kwargs)
-            return response.get('Items', [])
+            items.extend(response.get('Items', []))
+
+            # Continue scanning if more results exist
+            while 'LastEvaluatedKey' in response:
+                scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+                response = table.scan(**scan_kwargs)
+                items.extend(response.get('Items', []))
+
+            return items
         except Exception as e:
             raise RuntimeError(f"Failed to scan table for items excluding status '{excluded_status}': {e}")
