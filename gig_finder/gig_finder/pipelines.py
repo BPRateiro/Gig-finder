@@ -28,21 +28,34 @@ class GigFinderPipeline:
         today = datetime.datetime.now(datetime.timezone.utc).date()
         
         # Fetch items where the status is not 'Ended'
-        active_items = self.dynamodb_manager.get_items_excluding_status(self.table, "Ended", ["_id", "last_seen_at", "history"])
+        active_items = self.dynamodb_manager.get_items_excluding_status(
+            self.table, "Ended", ["_id", "last_seen_at", "status"]
+        )
 
         for item in active_items:
             last_seen_date = datetime.datetime.fromisoformat(item['last_seen_at']).date()
             if last_seen_date < today:
-                item['status'] = "Ended"
-                change_record = {
-                    "modified_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "changes": {"status": "Ended"}
-                }
-                item['history'].append(change_record)
                 try:
-                    self.dynamodb_manager.insert_item(self.table, item)
+                    # Perform a conditional update for the status field only
+                    response = self.table.update_item(
+                        Key={'_id': item['_id']},
+                        UpdateExpression="SET #status = :new_status, #history = list_append(#history, :new_history)",
+                        ConditionExpression="attribute_exists(#_id) AND #status <> :new_status",
+                        ExpressionAttributeNames={
+                            "#_id": "_id",
+                            "#status": "status",
+                            "#history": "history"
+                        },
+                        ExpressionAttributeValues={
+                            ":new_status": "Ended",
+                            ":new_history": [{
+                                "modified_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                                "changes": {"status": "Ended"}
+                            }]
+                        }
+                    )
                     spider.logger.info(f"Marked item {item['_id']} as Ended.")
-                except RuntimeError as e:
+                except Exception as e:
                     spider.logger.error(f"Failed to update item {item['_id']} to Ended: {e}")
 
     def process_item(self, item, spider):
