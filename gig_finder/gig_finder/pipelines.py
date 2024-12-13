@@ -10,6 +10,7 @@ class GigFinderPipeline:
         self.dynamodb_manager = DynamoDBManager(aws_region, aws_access_key, aws_secret_key)
         self.track_fields = ["status", "price_min", "price_max", "offers", "is_competition", 
                              "is_hourly", "types", "verified_payment", "tags"]  # Default fields to track
+        self.today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -24,20 +25,19 @@ class GigFinderPipeline:
         self.table = self.dynamodb_manager.get_or_create_table(spider.name)
 
     def close_spider(self, spider):
-        """Mark offers as ended if they are not seen today and don't have the status 'Ended'."""
-        today = datetime.datetime.now(datetime.timezone.utc).date()
-        
+        """Mark offers as ended if they are not seen today and don't have the status 'Ended'."""        
         # Fetch items where the status is not 'Ended'
         active_items = self.dynamodb_manager.get_items_excluding_status(self.table, "Ended", ["_id", "last_seen_at", "status"])
 
         for item in active_items:
             last_seen_date = datetime.datetime.fromisoformat(item['last_seen_at']).date()
-            if last_seen_date < today:
+            if last_seen_date < datetime.date.fromisoformat(self.today):
                 previous_status = item['status']
                 success = self.dynamodb_manager.update_status_to_ended(
                     table=self.table,
                     item_id=item['_id'],
-                    previous_status=previous_status
+                    previous_status=previous_status,
+                    today=self.today,
                 )
                 if success:
                     spider.logger.info(f"Marked item {item['_id']} as Ended.")
@@ -80,7 +80,7 @@ class GigFinderPipeline:
         item['_id'] = f"https://www.freelancer.com{item.get('_id', '')}"
 
         # Update last_seen_at timestamp
-        item['last_seen_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        item['last_seen_at'] = self.today
 
         try:
             item = self.prepare_item_with_history(item)  # Check for changes
@@ -97,14 +97,14 @@ class GigFinderPipeline:
             history = existing_item.get('history', [])
             if diff:  # Only update if there are changes
                 change_record = {
-                    "modified_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "modified_at": self.today,
                     "changes": diff
                 }
                 history.append(change_record)
             item['created_at'] = existing_item.get('created_at')
             item['history'] = history
         else:  # First insertion
-            item['created_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            item['created_at'] = self.today
             item['history'] = []
         return item
 
@@ -171,7 +171,7 @@ class DynamoDBManager:
         except Exception as e:
             raise RuntimeError(f"Failed to get item with projection from table: {e}")
         
-    def update_status_to_ended(self, table, item_id, previous_status):
+    def update_status_to_ended(self, table, item_id, previous_status, today):
         """Update the status of an item to 'Ended' and append to its history."""
         try:
             table.update_item(
@@ -189,7 +189,7 @@ class DynamoDBManager:
                 ExpressionAttributeValues={
                     ":new_status": "Ended",
                     ":new_history": [{
-                        "modified_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        "modified_at": today,
                         "changes": {"status": previous_status}
                     }],
                     ":empty_list": []
