@@ -28,35 +28,21 @@ class GigFinderPipeline:
         today = datetime.datetime.now(datetime.timezone.utc).date()
         
         # Fetch items where the status is not 'Ended'
-        active_items = self.dynamodb_manager.get_items_excluding_status(
-            self.table, "Ended", ["_id", "last_seen_at", "status"]
-        )
+        active_items = self.dynamodb_manager.get_items_excluding_status(self.table, "Ended", ["_id", "last_seen_at", "status"])
 
         for item in active_items:
             last_seen_date = datetime.datetime.fromisoformat(item['last_seen_at']).date()
             if last_seen_date < today:
-                try:
-                    # Perform a conditional update for the status field only
-                    response = self.table.update_item(
-                        Key={'_id': item['_id']},
-                        UpdateExpression="SET #status = :new_status, #history = list_append(#history, :new_history)",
-                        ConditionExpression="attribute_exists(#_id) AND #status <> :new_status",
-                        ExpressionAttributeNames={
-                            "#_id": "_id",
-                            "#status": "status",
-                            "#history": "history"
-                        },
-                        ExpressionAttributeValues={
-                            ":new_status": "Ended",
-                            ":new_history": [{
-                                "modified_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                                "changes": {"status": "Ended"}
-                            }]
-                        }
-                    )
+                previous_status = item['status']
+                success = self.dynamodb_manager.update_status_to_ended(
+                    table=self.table,
+                    item_id=item['_id'],
+                    previous_status=previous_status
+                )
+                if success:
                     spider.logger.info(f"Marked item {item['_id']} as Ended.")
-                except Exception as e:
-                    spider.logger.error(f"Failed to update item {item['_id']} to Ended: {e}")
+                else:
+                    spider.logger.error(f"Failed to update item {item['_id']} to Ended.")
 
     def process_item(self, item, spider):
         """Process and save the item to DynamoDB."""
@@ -115,6 +101,7 @@ class GigFinderPipeline:
                     "changes": diff
                 }
                 history.append(change_record)
+            item['created_at'] = existing_item.get('created_at')
             item['history'] = history
         else:  # First insertion
             item['created_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -148,16 +135,14 @@ class DynamoDBManager:
     def get_or_create_table(self, table_name, partition_key='_id', partition_key_type='S'):
         """Ensure the table exists or create it if it doesn't."""
         existing_tables = self.dynamodb.meta.client.list_tables()['TableNames']
-        if table_name not in existing_tables:
-            # Create the table
+        if table_name not in existing_tables: # Create the table
             self.dynamodb.create_table(
                 TableName=table_name,
                 KeySchema=[{'AttributeName': partition_key, 'KeyType': 'HASH'}],
                 AttributeDefinitions=[{'AttributeName': partition_key, 'AttributeType': partition_key_type}],
                 ProvisionedThroughput={'ReadCapacityUnits': 5, 'WriteCapacityUnits': 5}
             )
-            # Wait for the table to be created
-            table = self.dynamodb.Table(table_name)
+            table = self.dynamodb.Table(table_name) # Wait for the table to be created
             table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
         else:
             table = self.dynamodb.Table(table_name)
@@ -185,6 +170,35 @@ class DynamoDBManager:
             return response.get('Item')
         except Exception as e:
             raise RuntimeError(f"Failed to get item with projection from table: {e}")
+        
+    def update_status_to_ended(self, table, item_id, previous_status):
+        """Update the status of an item to 'Ended' and append to its history."""
+        try:
+            table.update_item(
+                Key={'_id': item_id},
+                UpdateExpression="""
+                    SET #status = :new_status,
+                        #history = list_append(if_not_exists(#history, :empty_list), :new_history)
+                """,
+                ConditionExpression="attribute_exists(#_id) AND #status <> :new_status",
+                ExpressionAttributeNames={
+                    "#_id": "_id",
+                    "#status": "status",
+                    "#history": "history"
+                },
+                ExpressionAttributeValues={
+                    ":new_status": "Ended",
+                    ":new_history": [{
+                        "modified_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        "changes": {"status": previous_status}
+                    }],
+                    ":empty_list": []
+                }
+            )
+            return True
+        except Exception as e:
+            print(f"Error updating item {item_id} to Ended: {e}")
+            return False
 
     def get_items_excluding_status(self, table, excluded_status, fields=None):
         """Retrieve all items that do not have the specified excluded status, with optional field projection."""
