@@ -91,7 +91,10 @@ class GigFinderPipeline:
     
     def prepare_item_with_history(self, item):
         """Prepare the item by adding history tracking for selected fields."""
-        existing_item = self.dynamodb_manager.get_item_with_projection(self.table, item['_id'], self.track_fields + ["history", "created_at"])
+        existing_item = self.dynamodb_manager.get_item_with_projection(
+            self.table, item['_id'], self.track_fields + ["history", "created_at"]
+        )
+        
         if existing_item:
             diff = self.calculate_diff(existing_item, item)
             history = existing_item.get('history', [])

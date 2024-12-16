@@ -7,11 +7,23 @@ class FreelancerSpider(scrapy.Spider):
     start_urls = ['https://www.freelancer.com/job/']
     suffix = "/?status=all" # Show all jobs including closed
 
-    def __init__(self, historical=False, categories_list=[], *args, **kwargs):
-        """Initialize the spider with the historical flag."""
+    def __init__(self, historical=False, categories=None, *args, **kwargs):
+        """Initialize the spider with the historical flag and categories list."""
         super().__init__(*args, **kwargs)
         self.historical = historical if isinstance(historical, bool) else historical.lower() == 'true'
-        self.category_prefixes = categories_list if isinstance(categories_list, list) else []
+
+        # Log the raw value of categories for debugging
+        self.logger.info(f"Raw categories argument: {categories}, Type: {type(categories)}")
+
+        # Handle JSON decoding for categories argument
+        if isinstance(categories, str):
+            try:
+                self.categories_list = json.loads(categories)
+            except json.JSONDecodeError:
+                self.logger.error(f"Invalid categories argument: {categories}")
+                self.categories_list = []
+        else:
+            self.categories_list = []
 
     def parse(self, response):
         """Parse the main page and process job categories."""
@@ -23,12 +35,13 @@ class FreelancerSpider(scrapy.Spider):
             category_title = category['category']
             tag_link = category['tag_link']
 
-            # Filter categories if the categories attribute is set
-            if self.category_prefixes and not any(category_title.startswith(prefix) for prefix in self.category_prefixes):
-                continue
+            if self.categories_list:
+                # Ensure category_title is not None and filter correctly
+                if not category_title or not any(category_title.startswith(prefix) for prefix in self.categories_list):
+                    continue
 
             # Log the category being processed
-            self.logger.info(f"Processing category: {category_title} at {tag_link}")
+            self.logger.info(f"Processing category: {category_title} at {tag_link}, {self.categories_list}")
 
             # Format links using format_url
             full_link_start = self.format_url(tag_link)
