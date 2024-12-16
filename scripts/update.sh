@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Set repository and Docker Compose file paths
 REPO_DIR=/home/ec2-user/Gig-finder
 DOCKER_COMPOSE_FILE=$REPO_DIR/docker-compose.yml
 
@@ -9,6 +10,3 @@ git pull origin main
 
 # Build and update the Docker image
 docker compose -f $DOCKER_COMPOSE_FILE build
-
-# Run the spider
-docker compose -f $DOCKER_COMPOSE_FILE up

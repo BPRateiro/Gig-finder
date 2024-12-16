@@ -7,10 +7,11 @@ class FreelancerSpider(scrapy.Spider):
     start_urls = ['https://www.freelancer.com/job/']
     suffix = "/?status=all" # Show all jobs including closed
 
-    def __init__(self, historical=False, *args, **kwargs):
+    def __init__(self, historical=False, categories_list=[], *args, **kwargs):
         """Initialize the spider with the historical flag."""
         super().__init__(*args, **kwargs)
         self.historical = historical if isinstance(historical, bool) else historical.lower() == 'true'
+        self.category_prefixes = categories_list if isinstance(categories_list, list) else []
 
     def parse(self, response):
         """Parse the main page and process job categories."""
@@ -18,9 +19,13 @@ class FreelancerSpider(scrapy.Spider):
         category_data = self.extract_categories(response)
 
         # Process each category one by one
-        for category in category_data[:1]: # TEST ONLY
+        for category in category_data:
             category_title = category['category']
             tag_link = category['tag_link']
+
+            # Filter categories if the categories attribute is set
+            if self.category_prefixes and not any(category_title.startswith(prefix) for prefix in self.category_prefixes):
+                continue
 
             # Log the category being processed
             self.logger.info(f"Processing category: {category_title} at {tag_link}")
