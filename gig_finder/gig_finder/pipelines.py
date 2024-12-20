@@ -26,64 +26,55 @@ class GigFinderPipeline:
 
     def close_spider(self, spider):
         """Mark offers as ended if they are not seen today and don't have the status 'Ended'."""        
-        # Fetch items where the status is not 'Ended'
-        active_items = self.dynamodb_manager.get_items_excluding_status(self.table, "Ended", ["_id", "last_seen_at", "status"])
+        active_items = self.dynamodb_manager.get_items_excluding_status_and_date(
+            self.table, "Ended", self.today, ["_id", "status"]
+        )
 
         for item in active_items:
-            last_seen_date = datetime.datetime.fromisoformat(item['last_seen_at']).date()
-            if last_seen_date < datetime.date.fromisoformat(self.today):
-                previous_status = item['status']
-                success = self.dynamodb_manager.update_status_to_ended(
-                    table=self.table,
-                    item_id=item['_id'],
-                    previous_status=previous_status,
-                    today=self.today,
-                )
-                if success:
-                    spider.logger.info(f"Marked item {item['_id']} as Ended.")
-                else:
-                    spider.logger.error(f"Failed to update item {item['_id']} to Ended.")
+            previous_status = item['status']
+            success = self.dynamodb_manager.update_status_to_ended(
+                table=self.table,
+                item_id=item['_id'],
+                previous_status=previous_status,
+                today=self.today,
+            )
+            if success:
+                spider.logger.info(f"Marked item {item['_id']} as Ended.")
+            else:
+                spider.logger.error(f"Failed to update item {item['_id']} to Ended.")
 
     def process_item(self, item, spider):
         """Process and save the item to DynamoDB."""
-        # Remove private projects and records without price
         if (item.get('offers') is None and item.get('price') is None) or item.get('price') == 'N/A':
             spider.logger.info(f"Skipping private project or item with no price: {item.get('_id')}")
             return None
         
-        # Clean strings in the item
         for field in item:
-            if isinstance(item[field], str):  # Clean strings
+            if isinstance(item[field], str):
                 item[field] = self.clean_string(item[field])
-            elif isinstance(item[field], list):  # Clean lists of strings
+            elif isinstance(item[field], list):
                 item[field] = [self.clean_string(element) for element in item[field] if isinstance(element, str)]
 
-        # Mark if the job is part of a competition
         item['is_competition'] = bool(re.search(r'entries', str(item.get('offers', ''))))
 
-        # Extract the number of offers
         offers_match = re.search(r'(\d+)', str(item.get('offers', '')))
         item['offers'] = int(offers_match.group(1)) if offers_match else None
 
-        # Add the is_hourly column
         hourly_suffix = r'\s*/\s*hr'
         item['is_hourly'] = bool(re.search(hourly_suffix, str(item.get('price', ''))))
 
-        # Extract price_min and price_max
         extraction_pattern = r'\$(\d+)(?:\s*-\s*\$(\d+))?'
         extracted = re.search(extraction_pattern, item.get("price"))
         item['price_min'] = Decimal(extracted.group(1)) if extracted else None
         item['price_max'] = Decimal(extracted.group(2)) if extracted and extracted.group(2) else item['price_min']
-        item.pop('price', None) # Drop the original price column
+        item.pop('price', None)
 
-        # Append site prefix to the _id
         item['_id'] = f"https://www.freelancer.com{item.get('_id', '')}"
 
-        # Update last_seen_at timestamp
         item['last_seen_at'] = self.today
 
         try:
-            item = self.prepare_item_with_history(item)  # Check for changes
+            item = self.prepare_item_with_history(item)
             self.dynamodb_manager.insert_item(self.table, item)
         except Exception as e:
             spider.logger.error(f"Error inserting item into DynamoDB: {e}")
@@ -98,7 +89,7 @@ class GigFinderPipeline:
         if existing_item:
             diff = self.calculate_diff(existing_item, item)
             history = existing_item.get('history', [])
-            if diff:  # Only update if there are changes
+            if diff:
                 change_record = {
                     "modified_at": self.today,
                     "changes": diff
@@ -106,7 +97,7 @@ class GigFinderPipeline:
                 history.append(change_record)
             item['created_at'] = existing_item.get('created_at')
             item['history'] = history
-        else:  # First insertion
+        else:
             item['created_at'] = self.today
             item['history'] = []
         return item
@@ -138,14 +129,14 @@ class DynamoDBManager:
     def get_or_create_table(self, table_name, partition_key='_id', partition_key_type='S'):
         """Ensure the table exists or create it if it doesn't."""
         existing_tables = self.dynamodb.meta.client.list_tables()['TableNames']
-        if table_name not in existing_tables: # Create the table
+        if table_name not in existing_tables:
             self.dynamodb.create_table(
                 TableName=table_name,
                 KeySchema=[{'AttributeName': partition_key, 'KeyType': 'HASH'}],
                 AttributeDefinitions=[{'AttributeName': partition_key, 'AttributeType': partition_key_type}],
                 ProvisionedThroughput={'ReadCapacityUnits': 5, 'WriteCapacityUnits': 5}
             )
-            table = self.dynamodb.Table(table_name) # Wait for the table to be created
+            table = self.dynamodb.Table(table_name)
             table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
         else:
             table = self.dynamodb.Table(table_name)
@@ -161,7 +152,6 @@ class DynamoDBManager:
     def get_item_with_projection(self, table, partition_key_value, fields):
         """Retrieve an item with only specific fields."""
         try:
-            # Map fields to handle reserved keywords
             expression_attribute_names = {f"#{field}": field for field in fields}
             projection_expression = ", ".join(expression_attribute_names.keys())
 
@@ -203,14 +193,15 @@ class DynamoDBManager:
             print(f"Error updating item {item_id} to Ended: {e}")
             return False
 
-    def get_items_excluding_status(self, table, excluded_status, fields=None):
-        """Retrieve all items that do not have the specified excluded status, with optional field projection."""
+    def get_items_excluding_status_and_date(self, table, excluded_status, today, fields=None):
+        """Retrieve all items that do not have the specified excluded status and last_seen_at is not today."""
         try:
             items = []
-            scan_kwargs = {"FilterExpression": Attr('status').ne(excluded_status)}
+            scan_kwargs = {
+                "FilterExpression": Attr('status').ne(excluded_status) & Attr('last_seen_at').ne(today)
+            }
 
             if fields:
-                # Map fields to handle reserved keywords
                 expression_attribute_names = {f"#{field}": field for field in fields}
                 projection_expression = ", ".join(expression_attribute_names.keys())
                 scan_kwargs.update({
@@ -221,7 +212,6 @@ class DynamoDBManager:
             response = table.scan(**scan_kwargs)
             items.extend(response.get('Items', []))
 
-            # Continue scanning if more results exist
             while 'LastEvaluatedKey' in response:
                 scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
                 response = table.scan(**scan_kwargs)
@@ -229,4 +219,4 @@ class DynamoDBManager:
 
             return items
         except Exception as e:
-            raise RuntimeError(f"Failed to scan table for items excluding status '{excluded_status}': {e}")
+            raise RuntimeError(f"Failed to scan table for items excluding status '{excluded_status}' and last_seen_at '{today}': {e}")

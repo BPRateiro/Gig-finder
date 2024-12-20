@@ -31,7 +31,7 @@ class FreelancerSpider(scrapy.Spider):
         category_data = self.extract_categories(response)
 
         # Process each category one by one
-        for category in category_data:
+        for category in category_data: 
             category_title = category['category']
             tag_link = category['tag_link']
 
