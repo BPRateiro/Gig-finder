@@ -41,7 +41,7 @@ class FreelancerSpider(scrapy.Spider):
                     continue
 
             # Log the category being processed
-            self.logger.info(f"Processing category: {category_title} at {tag_link}, {self.categories_list}")
+            self.logger.info(f"Processing category: {category_title} at {tag_link}")
 
             # Format links using format_url
             full_link_start = self.format_url(tag_link)
