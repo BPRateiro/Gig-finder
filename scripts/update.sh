@@ -6,7 +6,8 @@ DOCKER_COMPOSE_FILE=$REPO_DIR/docker-compose.yml
 
 # Fetch the latest code
 cd $REPO_DIR || exit
-git pull origin main
+git fetch origin main
+git reset --hard origin/main
 
 # Build and update the Docker image
 docker-compose -f $DOCKER_COMPOSE_FILE build
