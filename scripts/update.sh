@@ -13,7 +13,7 @@ cd $REPO_DIR || exit
 /usr/local/bin/docker-compose -f $DOCKER_COMPOSE_FILE down --remove-orphans
 
 # Remove unused Docker resources to free up space
-/usr/local/bin/docker system prune -f --volumes
+/usr/bin/docker system prune -f --volumes
 
 # Build and update the Docker image
 /usr/local/bin/docker-compose -f $DOCKER_COMPOSE_FILE build
