@@ -48,7 +48,7 @@ class GigFinderPipeline:
         if (item.get('offers') is None and item.get('price') is None) or item.get('price') == 'N/A':
             spider.logger.info(f"Skipping private project or item with no price: {item.get('_id')}")
             return None
-        
+
         for field in item:
             if isinstance(item[field], str):
                 item[field] = self.clean_string(item[field])
@@ -75,7 +75,8 @@ class GigFinderPipeline:
 
         try:
             item = self.prepare_item_with_history(item)
-            self.dynamodb_manager.insert_item(self.table, item)
+            if item is not None:  # Only insert the item if it's not None
+                self.dynamodb_manager.insert_item(self.table, item)
         except Exception as e:
             spider.logger.error(f"Error inserting item into DynamoDB: {e}")
         return item
@@ -83,10 +84,14 @@ class GigFinderPipeline:
     def prepare_item_with_history(self, item):
         """Prepare the item by adding history tracking for selected fields."""
         existing_item = self.dynamodb_manager.get_item_with_projection(
-            self.table, item['_id'], self.track_fields + ["history", "created_at"]
+            self.table, item['_id'], self.track_fields + ["history", "created_at", "last_seen_at"]
         )
-        
+
         if existing_item:
+            if existing_item.get('last_seen_at') == self.today:
+                # If the item was already seen today, return None to skip processing.
+                return None
+
             diff = self.calculate_diff(existing_item, item)
             history = existing_item.get('history', [])
             if diff:
@@ -100,6 +105,7 @@ class GigFinderPipeline:
         else:
             item['created_at'] = self.today
             item['history'] = []
+
         return item
 
     def clean_string(self, text):
